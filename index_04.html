@@ -1,32 +1,49 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Geoportal Simple</title>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <style> #map { height: 100vh; } </style>
-</head>
-<body>
-<div id="map"></div>
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script>
-  const map = L.map('map').setView([-0.2, -78.5], 13); // ajusta centro y zoom
+  let capaActual; // para controlar la capa visible
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors'
-  }).addTo(map);
+  async function dibujarCapaGeojson(url, key, tabla) {
+    // Elimina capa previa si existe
+    if (capaActual) {
+      map.removeLayer(capaActual);
+      capaActual = null;
+    }
 
-  // Capa WMS desde GeoServer
-  const accidentes = L.tileLayer.wms("http://localhost:8080/geoserver/public/wms", {
-    layers: 'public:accidentes',
-    format: 'image/png',
-    transparent: true,
-    attribution: "Accidentes"
-  }).addTo(map);
+    try {
+      const r = await fetch(`${url}/rest/v1/${tabla}?select=gid,geom`, {
+        headers: {
+          apikey: key,
+          Authorization: `Bearer ${key}`,
+          Accept: "application/vnd.pgrst.object+json"
+        }
+      });
 
-  // Puedes agregar más capas como:
-  // const lotes = L.tileLayer.wms("...", { layers: 'public:lotes', ... }).addTo(map);
+      const json = await r.json();
+
+      // Manejo cuando viene como objeto único o arreglo
+      const features = Array.isArray(json) ? json : [json];
+
+      const geojson = {
+        type: "FeatureCollection",
+        features: features.map(f => {
+          const geom = typeof f.geom === "string" ? JSON.parse(f.geom) : f.geom;
+          return {
+            type: "Feature",
+            properties: { gid: f.gid },
+            geometry: geom
+          };
+        })
+      };
+
+      capaActual = L.geoJSON(geojson, {
+        onEachFeature: function (feature, layer) {
+          layer.bindPopup("GID: " + feature.properties.gid);
+        }
+      }).addTo(map);
+
+      map.fitBounds(capaActual.getBounds());
+    } catch (err) {
+      console.error(err);
+      alert("Error al cargar geometría desde tabla: " + tabla);
+    }
+  }
 </script>
-</body>
-</html>
