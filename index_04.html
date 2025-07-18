@@ -60,4 +60,50 @@
   }).addTo(map);
 
   const url = "https://wtuhbbmapoindpuaywxo.supabase.co";
-  const key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0dWhiYm1hcG9pbmRwdWF5d3hvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3Mjc5NTEsImV4cCI6MjA2ODMwMzk1MX0.1vH0zS
+  const key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0dWhiYm1hcG9pbmRwdWF5d3hvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3Mjc5NTEsImV4cCI6MjA2ODMwMzk1MX0.1vH0zSrQ5EHHz1p_SS3gtzyDGTBpzHBOjq5ART7Uc8k";
+
+  const capas = {};
+
+  async function toggleLayer(checkbox) {
+    const nombre = checkbox.value;
+
+    if (checkbox.checked) {
+      const res = await fetch(`${url}/rest/v1/${nombre}?select=*`, {
+        headers: {
+          apikey: key,
+          Authorization: `Bearer ${key}`
+        }
+      });
+      const datos = await res.json();
+      const geojson = {
+        type: "FeatureCollection",
+        features: datos.map(f => {
+          const { geom, ...props } = f;
+          return {
+            type: "Feature",
+            properties: props,
+            geometry: geom
+          }
+        })
+      };
+      capas[nombre] = L.geoJSON(geojson, {
+        onEachFeature: (f, layer) => {
+          let contenido = "<strong>Información:</strong><br>";
+          for (const [key, value] of Object.entries(f.properties)) {
+            contenido += `<strong>${key}</strong>: ${value}<br>`;
+          }
+          layer.bindPopup(contenido);
+        }
+      }).addTo(map);
+      map.fitBounds(capas[nombre].getBounds());
+    } else {
+      if (capas[nombre]) {
+        map.removeLayer(capas[nombre]);
+        delete capas[nombre];
+      }
+    }
+  }
+</script>
+
+</body>
+</html>
