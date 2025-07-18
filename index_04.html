@@ -1,65 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Geoportal Simple</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style> #map { height: 100vh; } </style>
+</head>
+<body>
+<div id="map"></div>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script>
-  let capaActual = []; // Almacena los marcadores actuales en el mapa
+  const map = L.map('map').setView([-0.2, -78.5], 13); // ajusta centro y zoom
 
-  async function previewTabla(url, key, tabla) {
-    const status = document.getElementById('status');
-    const preview = document.getElementById('preview');
-    preview.innerHTML = '';
-    status.textContent = `⏳ Cargando primeras filas de "${tabla}"…`;
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(map);
 
-    try {
-      const r = await fetch(`${url}/rest/v1/${tabla}?select=*&limit=500`, {
-        headers: {
-          apikey: key,
-          Authorization: `Bearer ${key}`
-        }
-      });
-      if (!r.ok) throw new Error(r.statusText);
-      const data = await r.json();
+  // Capa WMS desde GeoServer
+  const accidentes = L.tileLayer.wms("http://localhost:8080/geoserver/public/wms", {
+    layers: 'public:accidentes',
+    format: 'image/png',
+    transparent: true,
+    attribution: "Accidentes"
+  }).addTo(map);
 
-      // Mostrar tabla HTML
-      let html = `<h3>Primeras filas de <strong>${tabla}</strong></h3>`;
-      if (!data.length) {
-        html += '<p>— tabla vacía —</p>';
-      } else {
-        html += '<table><tr>';
-        Object.keys(data[0]).forEach(c => html += `<th>${c}</th>`);
-        html += '</tr>';
-        data.forEach(row => {
-          html += '<tr>';
-          Object.values(row).forEach(v => html += `<td>${v}</td>`);
-          html += '</tr>';
-        });
-        html += '</table>';
-      }
-      preview.innerHTML = html;
-      status.textContent = `✅ Datos de "${tabla}" cargados`;
-
-      // Si contiene latitud y longitud, mostrar en el mapa
-      if ('latitud' in data[0] && 'longitud' in data[0]) {
-        // Eliminar marcadores anteriores
-        capaActual.forEach(m => map.removeLayer(m));
-        capaActual = [];
-
-        data.forEach(item => {
-          if (item.latitud && item.longitud) {
-            const marcador = L.marker([item.latitud, item.longitud])
-              .addTo(map)
-              .bindPopup(
-                Object.entries(item)
-                  .map(([k, v]) => `<strong>${k}:</strong> ${v}`)
-                  .join('<br>')
-              );
-            capaActual.push(marcador);
-          }
-        });
-
-        // Centrar el mapa en el primer punto
-        map.setView([data[0].latitud, data[0].longitud], 14);
-      }
-
-    } catch (err) {
-      status.textContent = '❌ Error: ' + err.message;
-    }
-  }
+  // Puedes agregar más capas como:
+  // const lotes = L.tileLayer.wms("...", { layers: 'public:lotes', ... }).addTo(map);
 </script>
+</body>
+</html>
