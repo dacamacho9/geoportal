@@ -1,49 +1,96 @@
-<script>
-  let capaActual; // para controlar la capa visible
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Geoportal Catastral</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    #map { height: 60vh; width: 100%; }
+    body { font-family: sans-serif; margin: 0; padding: 0; }
+    #panel { padding: 1em; }
+    ul { list-style: none; padding: 0; }
+    li { margin: .5em 0; }
+    a { cursor: pointer; color: blue; }
+  </style>
+</head>
+<body>
 
-  async function dibujarCapaGeojson(url, key, tabla) {
-    // Elimina capa previa si existe
-    if (capaActual) {
-      map.removeLayer(capaActual);
-      capaActual = null;
-    }
+<header style="background:#004b87; color:white; padding:1em;">
+  <h2>Geoportal Catastral</h2>
+</header>
+
+<div id="map"></div>
+
+<div id="panel">
+  <h3>Capas disponibles</h3>
+  <ul id="tables"></ul>
+  <div id="status"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script>
+  const url = "https://wtuhbbmapoindpuaywxo.supabase.co";
+  const key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0dWhiYm1hcG9pbmRwdWF5d3hvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3Mjc5NTEsImV4cCI6MjA2ODMwMzk1MX0.1vH0zSrQ5EHHz1p_SS3gtzyDGTBpzHBOjq5ART7Uc8k";
+
+  const map = L.map('map').setView([-0.22985, -78.52495], 14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  let capaActual;
+
+  const capas = [
+    'accidentes_geojson',
+    'aiva_geojson',
+    'construcciones_geojson',
+    'lotes_geojson',
+    'manzana_geojson'
+  ];
+
+  const lista = document.getElementById('tables');
+  capas.forEach(nombre => {
+    const li = document.createElement('li');
+    const enlace = document.createElement('a');
+    enlace.textContent = nombre;
+    enlace.onclick = () => dibujarCapaGeojson(nombre);
+    li.appendChild(enlace);
+    lista.appendChild(li);
+  });
+
+  async function dibujarCapaGeojson(tabla) {
+    if (capaActual) map.removeLayer(capaActual);
 
     try {
-      const r = await fetch(`${url}/rest/v1/${tabla}?select=gid,geom`, {
+      const res = await fetch(`${url}/rest/v1/${tabla}?select=gid,geom`, {
         headers: {
           apikey: key,
-          Authorization: `Bearer ${key}`,
-          Accept: "application/vnd.pgrst.object+json"
+          Authorization: `Bearer ${key}`
         }
       });
 
-      const json = await r.json();
-
-      // Manejo cuando viene como objeto único o arreglo
-      const features = Array.isArray(json) ? json : [json];
-
+      const datos = await res.json();
       const geojson = {
         type: "FeatureCollection",
-        features: features.map(f => {
-          const geom = typeof f.geom === "string" ? JSON.parse(f.geom) : f.geom;
-          return {
-            type: "Feature",
-            properties: { gid: f.gid },
-            geometry: geom
-          };
-        })
+        features: datos.map(f => ({
+          type: "Feature",
+          properties: { gid: f.gid },
+          geometry: f.geom
+        }))
       };
 
       capaActual = L.geoJSON(geojson, {
-        onEachFeature: function (feature, layer) {
-          layer.bindPopup("GID: " + feature.properties.gid);
-        }
+        onEachFeature: (f, layer) => layer.bindPopup("GID: " + f.properties.gid)
       }).addTo(map);
 
       map.fitBounds(capaActual.getBounds());
+      document.getElementById("status").textContent = `✅ Capa "${tabla}" cargada`;
     } catch (err) {
       console.error(err);
-      alert("Error al cargar geometría desde tabla: " + tabla);
+      document.getElementById("status").textContent = `❌ Error cargando capa "${tabla}"`;
     }
   }
 </script>
+
+</body>
+</html>
