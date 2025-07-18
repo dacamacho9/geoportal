@@ -2,73 +2,78 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Geoportal Catastral</title>
+  <title>Geoportal Catastral - Quito</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    #map { height: 60vh; width: 100%; }
-    body { font-family: sans-serif; margin: 0; padding: 0; }
-    #panel { padding: 1em; }
-    ul { list-style: none; padding: 0; }
-    li { margin: .5em 0; }
-    a { cursor: pointer; color: blue; }
+    html, body { margin: 0; padding: 0; font-family: sans-serif; }
+    #map { position: absolute; top: 0; bottom: 0; right: 0; left: 300px; }
+    #sidebar {
+      width: 280px;
+      position: absolute;
+      top: 0; bottom: 0; left: 0;
+      background: #f2f2f2;
+      padding: 1em;
+      box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+      overflow-y: auto;
+    }
+    h2 { margin-top: 0; }
+    label { display: block; margin-top: 1em; }
+    input[type="checkbox"] { margin-right: .5em; }
+    footer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 280px;
+      padding: .5em;
+      background: #004b87;
+      color: white;
+      font-size: .9em;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
 
-<header style="background:#004b87; color:white; padding:1em;">
-  <h2>Geoportal Catastral</h2>
-</header>
+<div id="sidebar">
+  <h2>🗺️ Geoportal Catastral</h2>
+  <p>Seleccione las capas para visualizar en el mapa:</p>
+
+  <label><input type="checkbox" value="accidentes_geojson" onchange="toggleLayer(this)"> Accidentes</label>
+  <label><input type="checkbox" value="aiva_geojson" onchange="toggleLayer(this)"> AIVA</label>
+  <label><input type="checkbox" value="construcciones_geojson" onchange="toggleLayer(this)"> Construcciones</label>
+  <label><input type="checkbox" value="lotes_geojson" onchange="toggleLayer(this)"> Lotes</label>
+  <label><input type="checkbox" value="manzana_geojson" onchange="toggleLayer(this)"> Manzanas</label>
+
+  <footer>
+    Municipio de Quito © 2025
+  </footer>
+</div>
 
 <div id="map"></div>
 
-<div id="panel">
-  <h3>Capas disponibles</h3>
-  <ul id="tables"></ul>
-  <div id="status"></div>
-</div>
-
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-  const url = "https://wtuhbbmapoindpuaywxo.supabase.co";
-  const key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0dWhiYm1hcG9pbmRwdWF5d3hvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3Mjc5NTEsImV4cCI6MjA2ODMwMzk1MX0.1vH0zSrQ5EHHz1p_SS3gtzyDGTBpzHBOjq5ART7Uc8k";
-
   const map = L.map('map').setView([-0.22985, -78.52495], 14);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
 
-  let capaActual;
+  const url = "https://wtuhbbmapoindpuaywxo.supabase.co";
+  const key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0dWhiYm1hcG9pbmRwdWF5d3hvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3Mjc5NTEsImV4cCI6MjA2ODMwMzk1MX0.1vH0zSrQ5EHHz1p_SS3gtzyDGTBpzHBOjq5ART7Uc8k";
 
-  const capas = [
-    'accidentes_geojson',
-    'aiva_geojson',
-    'construcciones_geojson',
-    'lotes_geojson',
-    'manzana_geojson'
-  ];
+  const capas = {};
 
-  const lista = document.getElementById('tables');
-  capas.forEach(nombre => {
-    const li = document.createElement('li');
-    const enlace = document.createElement('a');
-    enlace.textContent = nombre;
-    enlace.onclick = () => dibujarCapaGeojson(nombre);
-    li.appendChild(enlace);
-    lista.appendChild(li);
-  });
+  async function toggleLayer(checkbox) {
+    const nombre = checkbox.value;
 
-  async function dibujarCapaGeojson(tabla) {
-    if (capaActual) map.removeLayer(capaActual);
-
-    try {
-      const res = await fetch(`${url}/rest/v1/${tabla}?select=gid,geom`, {
+    if (checkbox.checked) {
+      const res = await fetch(`${url}/rest/v1/${nombre}?select=gid,geom`, {
         headers: {
           apikey: key,
           Authorization: `Bearer ${key}`
         }
       });
-
       const datos = await res.json();
       const geojson = {
         type: "FeatureCollection",
@@ -78,16 +83,15 @@
           geometry: f.geom
         }))
       };
-
-      capaActual = L.geoJSON(geojson, {
+      capas[nombre] = L.geoJSON(geojson, {
         onEachFeature: (f, layer) => layer.bindPopup("GID: " + f.properties.gid)
       }).addTo(map);
-
-      map.fitBounds(capaActual.getBounds());
-      document.getElementById("status").textContent = `✅ Capa "${tabla}" cargada`;
-    } catch (err) {
-      console.error(err);
-      document.getElementById("status").textContent = `❌ Error cargando capa "${tabla}"`;
+      map.fitBounds(capas[nombre].getBounds());
+    } else {
+      if (capas[nombre]) {
+        map.removeLayer(capas[nombre]);
+        delete capas[nombre];
+      }
     }
   }
 </script>
