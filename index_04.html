@@ -68,7 +68,7 @@
     const nombre = checkbox.value;
 
     if (checkbox.checked) {
-      const res = await fetch(`${url}/rest/v1/${nombre}?select=*`, {
+      const res = await fetch(`${url}/rest/v1/${nombre}?select=*&limit=10000`, {
         headers: {
           apikey: key,
           Authorization: `Bearer ${key}`
