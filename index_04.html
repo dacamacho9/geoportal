@@ -19,7 +19,9 @@
     }
     h2 { margin-top: 0; }
     label { display: block; margin-top: 1em; }
-    input[type="checkbox"] { margin-right: .5em; }
+    input, textarea { width: 100%; padding: 0.5em; margin-top: 0.3em; }
+    input[type="checkbox"] { width: auto; margin-right: 0.5em; }
+    button { margin-top: 1em; width: 100%; padding: 0.6em; background: #004b87; color: white; border: none; cursor: pointer; }
     footer {
       position: absolute;
       bottom: 0;
@@ -37,13 +39,16 @@
 
 <div id="sidebar">
   <h2>🗺️ Geoportal Catastral</h2>
-  <p>Seleccione las capas para visualizar en el mapa:</p>
-
-  <label><input type="checkbox" value="accidentes_geojson" onchange="toggleLayer(this)"> Accidentes</label>
-  <label><input type="checkbox" value="aiva_geojson" onchange="toggleLayer(this)"> AIVA</label>
-  <label><input type="checkbox" value="construcciones_geojson" onchange="toggleLayer(this)"> Construcciones</label>
-  <label><input type="checkbox" value="lotes_geojson" onchange="toggleLayer(this)"> Lotes</label>
-  <label><input type="checkbox" value="manzana_geojson" onchange="toggleLayer(this)"> Manzanas</label>
+  <form id="formulario">
+    <label>Nombre del propietario:<input name="propietario" required></label>
+    <label>Nro. de trámite:<input name="tramite" required></label>
+    <label>Tipo de problema:<input name="problema"></label>
+    <label>Observaciones:<textarea name="observaciones"></textarea></label>
+    <label>Latitud:<input name="latitud" required></label>
+    <label>Longitud:<input name="longitud" required></label>
+    <button type="submit">Enviar reporte</button>
+    <div id="form-status"></div>
+  </form>
 
   <footer>
     Municipio de Quito © 2025
@@ -59,64 +64,40 @@
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
 
-  const url = "https://wtuhbbmapoindpuaywxo.supabase.co";
-  const key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0dWhiYm1hcG9pbmRwdWF5d3hvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3Mjc5NTEsImV4cCI6MjA2ODMwMzk1MX0.1vH0zSrQ5EHHz1p_SS3gtzyDGTBpzHBOjq5ART7Uc8k";
+  const supabaseUrl = "https://wtuhbbmapoindpuaywxo.supabase.co";
+  const apiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0dWhiYm1hcG9pbmRwdWF5d3hvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3Mjc5NTEsImV4cCI6MjA2ODMwMzk1MX0.1vH0zSrQ5EHHz1p_SS3gtzyDGTBpzHBOjq5ART7Uc8k";
 
-  const capas = {};
+  document.getElementById('formulario').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const datos = {
+      propietario: form.propietario.value,
+      tramite: form.tramite.value,
+      problema: form.problema.value,
+      observaciones: form.observaciones.value,
+      latitud: parseFloat(form.latitud.value),
+      longitud: parseFloat(form.longitud.value)
+    };
 
-  async function toggleLayer(checkbox) {
-    const nombre = checkbox.value;
+    const res = await fetch(`${supabaseUrl}/rest/v1/reportes`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: apiKey,
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify(datos)
+    });
 
-    if (checkbox.checked) {
-      try {
-        const res = await fetch(`${url}/rest/v1/${nombre}?select=*&limit=10000`, {
-          headers: {
-            apikey: key,
-            Authorization: `Bearer ${key}`
-          }
-        });
-        const datos = await res.json();
-
-        const geojson = {
-          type: "FeatureCollection",
-          features: datos.map(f => {
-            const { geom, ...atributos } = f;
-            return {
-              type: "Feature",
-              properties: atributos,
-              geometry: geom
-            };
-          })
-        };
-
-        capas[nombre] = L.geoJSON(geojson, {
-          onEachFeature: (feature, layer) => {
-            let contenido = "<strong>Información:</strong><br>";
-            for (const [clave, valor] of Object.entries(feature.properties)) {
-              contenido += `<strong>${clave}</strong>: ${valor}<br>`;
-            }
-            layer.bindPopup(contenido);
-          }
-        }).addTo(map);
-
-        if (capas[nombre].getLayers().length > 0) {
-          map.fitBounds(capas[nombre].getBounds());
-        } else {
-          alert(`⚠️ La capa ${nombre} no contiene geometrías visibles.`);
-        }
-
-      } catch (error) {
-        console.error("Error al cargar la capa:", error);
-        alert(`❌ No se pudo cargar la capa "${nombre}".`);
-      }
-
+    const status = document.getElementById('form-status');
+    if (res.ok) {
+      status.textContent = "✅ Reporte enviado con éxito";
+      form.reset();
     } else {
-      if (capas[nombre]) {
-        map.removeLayer(capas[nombre]);
-        delete capas[nombre];
-      }
+      const error = await res.text();
+      status.textContent = "❌ Error: " + error;
     }
-  }
+  });
 </script>
 
 </body>
