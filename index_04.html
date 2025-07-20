@@ -165,11 +165,14 @@ document.getElementById('formulario').addEventListener('submit', async (e) => {
     status.textContent = "✅ Reporte enviado con éxito";
     form.reset();
     document.getElementById('submitBtn').disabled = true;
-    ubicacion = null;
-    if (capaReportes) {
-      map.removeLayer(capaReportes);
-    }
+    if (capaReportes) map.removeLayer(capaReportes);
     capaReportes = await cargarReportes();
+    map.setView([ubicacion.latitud, ubicacion.longitud], 17);
+    L.popup()
+      .setLatLng([ubicacion.latitud, ubicacion.longitud])
+      .setContent("📍 Reporte registrado aquí")
+      .openOn(map);
+    ubicacion = null;
   } else {
     const error = await res.text();
     status.textContent = "❌ Error: " + error;
