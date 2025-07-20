@@ -39,11 +39,9 @@
   <h2>🗺️ Geoportal Catastral</h2>
   <p>Seleccione las capas para visualizar en el mapa:</p>
 
-  <label><input type="checkbox" value="accidentes_geojson" onchange="toggleLayer(this)"> Accidentes</label>
-  <label><input type="checkbox" value="aiva_geojson" onchange="toggleLayer(this)"> AIVA</label>
-  <label><input type="checkbox" value="construcciones_geojson" onchange="toggleLayer(this)"> Construcciones</label>
-  <label><input type="checkbox" value="lotes_geojson" onchange="toggleLayer(this)"> Lotes</label>
-  <label><input type="checkbox" value="manzana_geojson" onchange="toggleLayer(this)"> Manzanas</label>
+  <label><input type="checkbox" value="lotes" onchange="toggleRPC(this)"> Lotes</label>
+  <label><input type="checkbox" value="manzana" onchange="toggleRPC(this)"> Manzanas</label>
+  <label><input type="checkbox" value="construcciones" onchange="toggleRPC(this)"> Construcciones</label>
 
   <footer>
     Municipio de Quito © 2025
@@ -64,36 +62,50 @@
 
   const capas = {};
 
-  async function toggleLayer(checkbox) {
+  async function toggleRPC(checkbox) {
     const nombre = checkbox.value;
+    const funcion = nombre + '_en_bbox';
 
     if (checkbox.checked) {
       try {
-        const res = await fetch(`${url}/rest/v1/${nombre}?select=*&limit=10000`, {
+        const bounds = map.getBounds();
+        const sw = bounds.getSouthWest();
+        const ne = bounds.getNorthEast();
+
+        const params = new URLSearchParams({
+          minx: sw.lng,
+          miny: sw.lat,
+          maxx: ne.lng,
+          maxy: ne.lat
+        });
+
+        const res = await fetch(`${url}/rest/v1/rpc/${funcion}?${params.toString()}`, {
           headers: {
             apikey: key,
             Authorization: `Bearer ${key}`
           }
         });
+
+        if (!res.ok) throw new Error(`Error al cargar ${nombre}: ${res.statusText}`);
         const datos = await res.json();
 
         const geojson = {
           type: "FeatureCollection",
           features: datos.map(f => {
-            const { geom, ...atributos } = f;
+            const { geom, ...props } = f;
             return {
               type: "Feature",
-              properties: atributos,
+              properties: props,
               geometry: geom
             };
           })
         };
 
         capas[nombre] = L.geoJSON(geojson, {
-          onEachFeature: (feature, layer) => {
+          onEachFeature: (f, layer) => {
             let contenido = "<strong>Información:</strong><br>";
-            for (const [clave, valor] of Object.entries(feature.properties)) {
-              contenido += `<strong>${clave}</strong>: ${valor}<br>`;
+            for (const [key, value] of Object.entries(f.properties)) {
+              contenido += `<strong>${key}</strong>: ${value}<br>`;
             }
             layer.bindPopup(contenido);
           }
@@ -101,15 +113,12 @@
 
         if (capas[nombre].getLayers().length > 0) {
           map.fitBounds(capas[nombre].getBounds());
-        } else {
-          alert(`⚠️ La capa ${nombre} no contiene geometrías visibles.`);
         }
 
-      } catch (error) {
-        console.error("Error al cargar la capa:", error);
-        alert(`❌ No se pudo cargar la capa "${nombre}".`);
+      } catch (err) {
+        console.error(err);
+        alert("❌ No se pudo cargar la capa " + nombre);
       }
-
     } else {
       if (capas[nombre]) {
         map.removeLayer(capas[nombre]);
