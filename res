@@ -1,58 +1,3 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <title>Geoportal Catastral - Quito</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <style>
-    html, body { margin: 0; padding: 0; font-family: sans-serif; }
-    #map { position: absolute; top: 0; bottom: 0; right: 0; left: 300px; }
-    #sidebar {
-      width: 280px;
-      position: absolute;
-      top: 0; bottom: 0; left: 0;
-      background: #f2f2f2;
-      padding: 1em;
-      box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-      overflow-y: auto;
-    }
-    h2 { margin-top: 0; }
-    label { display: block; margin-top: 1em; }
-    input[type="checkbox"] { margin-right: .5em; }
-    footer {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      width: 280px;
-      padding: .5em;
-      background: #004b87;
-      color: white;
-      font-size: .9em;
-      text-align: center;
-    }
-  </style>
-</head>
-<body>
-
-<div id="sidebar">
-  <h2>🗺️ Geoportal Catastral</h2>
-  <p>Seleccione las capas para visualizar en el mapa:</p>
-
-  <label><input type="checkbox" value="accidentes_geojson" onchange="toggleLayer(this)"> Accidentes</label>
-  <label><input type="checkbox" value="aiva_geojson" onchange="toggleLayer(this)"> AIVA</label>
-  <label><input type="checkbox" value="construcciones_geojson" onchange="toggleLayer(this)"> Construcciones</label>
-  <label><input type="checkbox" value="lotes_geojson" onchange="toggleLayer(this)"> Lotes</label>
-  <label><input type="checkbox" value="manzana_geojson" onchange="toggleLayer(this)"> Manzanas</label>
-
-  <footer>
-    Municipio de Quito © 2025
-  </footer>
-</div>
-
-<div id="map"></div>
-
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
   const map = L.map('map').setView([-0.22985, -78.52495], 14);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -68,34 +13,52 @@
     const nombre = checkbox.value;
 
     if (checkbox.checked) {
-      const res = await fetch(`${url}/rest/v1/${nombre}?select=*&limit=10000`, {
-  headers: {
-    apikey: key,
-    Authorization: `Bearer ${key}`
-  }
-});
-const datos = await res.json();
-      const geojson = {
-        type: "FeatureCollection",
-        features: datos.map(f => {
-          const { geom, ...props } = f;
-          return {
-            type: "Feature",
-            properties: props,
-            geometry: geom
+      try {
+        const res = await fetch(`${url}/rest/v1/${nombre}?select=*&limit=10000`, {
+          headers: {
+            apikey: key,
+            Authorization: `Bearer ${key}`
           }
-        })
-      };
-      capas[nombre] = L.geoJSON(geojson, {
-        onEachFeature: (f, layer) => {
-          let contenido = "<strong>Información:</strong><br>";
-          for (const [key, value] of Object.entries(f.properties)) {
-            contenido += `<strong>${key}</strong>: ${value}<br>`;
-          }
-          layer.bindPopup(contenido);
+        });
+
+        if (!res.ok) {
+          alert(`❌ Error al consultar la capa ${nombre}: ${res.statusText}`);
+          return;
         }
-      }).addTo(map);
-      map.fitBounds(capas[nombre].getBounds());
+
+        const datos = await res.json();
+
+        const geojson = {
+          type: "FeatureCollection",
+          features: datos.map(f => {
+            const { geom, ...props } = f;
+            return {
+              type: "Feature",
+              properties: props,
+              geometry: geom
+            };
+          })
+        };
+
+        capas[nombre] = L.geoJSON(geojson, {
+          onEachFeature: (f, layer) => {
+            let contenido = "<strong>Información:</strong><br>";
+            for (const [key, value] of Object.entries(f.properties)) {
+              contenido += `<strong>${key}</strong>: ${value}<br>`;
+            }
+            layer.bindPopup(contenido);
+          }
+        }).addTo(map);
+
+        if (capas[nombre].getLayers().length > 0) {
+          map.fitBounds(capas[nombre].getBounds());
+        } else {
+          alert(`⚠️ La capa ${nombre} no contiene geometrías visibles.`);
+        }
+      } catch (err) {
+        console.error("Error en toggleLayer:", err);
+        alert("❌ Error inesperado al cargar la capa.");
+      }
     } else {
       if (capas[nombre]) {
         map.removeLayer(capas[nombre]);
@@ -104,6 +67,3 @@ const datos = await res.json();
     }
   }
 </script>
-
-</body>
-</html>
