@@ -38,10 +38,8 @@
     <label>Trámite:<input name="tramite" required></label>
     <label>Problema:<input name="problema"></label>
     <label>Observaciones:<textarea name="observaciones"></textarea></label>
-    <label>Latitud:<input name="latitud" id="latitud" required></label>
-    <label>Longitud:<input name="longitud" id="longitud" required></label>
-    <button type="button" onclick="setLocation()">Usar mi ubicación</button>
-    <button type="submit">Enviar</button>
+    <button type="button" onclick="setLocationAndEnableSubmit()">Usar mi ubicación</button>
+    <button type="submit" id="submitBtn" disabled>Enviar</button>
     <div id="form-status"></div>
   </form>
 </div>
@@ -58,6 +56,7 @@ const key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZi
 
 const capas = {};
 let capaReportes = null;
+let ubicacion = null;
 
 async function toggleLayer(checkbox) {
   const nombre = checkbox.value;
@@ -122,11 +121,15 @@ async function cargarReportes() {
   return capa;
 }
 
-function setLocation() {
+function setLocationAndEnableSubmit() {
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(pos => {
-      document.getElementById('latitud').value = pos.coords.latitude;
-      document.getElementById('longitud').value = pos.coords.longitude;
+      ubicacion = {
+        latitud: pos.coords.latitude,
+        longitud: pos.coords.longitude
+      };
+      document.getElementById('submitBtn').disabled = false;
+      alert("Ubicación capturada");
     }, err => alert("No se pudo obtener la ubicación"));
   } else {
     alert("Geolocalización no soportada");
@@ -135,14 +138,18 @@ function setLocation() {
 
 document.getElementById('formulario').addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (!ubicacion) {
+    alert("Primero usa el botón 'Usar mi ubicación'");
+    return;
+  }
   const form = e.target;
   const datos = {
     propietario: form.propietario.value,
     tramite: form.tramite.value,
     problema: form.problema.value,
     observaciones: form.observaciones.value,
-    latitud: parseFloat(form.latitud.value),
-    longitud: parseFloat(form.longitud.value)
+    latitud: ubicacion.latitud,
+    longitud: ubicacion.longitud
   };
   const res = await fetch(`${url}/rest/v1/reportes`, {
     method: "POST",
@@ -157,6 +164,8 @@ document.getElementById('formulario').addEventListener('submit', async (e) => {
   if (res.ok) {
     status.textContent = "✅ Reporte enviado con éxito";
     form.reset();
+    document.getElementById('submitBtn').disabled = true;
+    ubicacion = null;
     if (capaReportes) {
       map.removeLayer(capaReportes);
     }
