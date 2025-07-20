@@ -109,3 +109,88 @@
           let contenido = "<strong>Información:</strong><br>";
           for (const [k, v] of Object.entries(f.properties)) {
             contenido += `<strong>${k}</strong>: ${v}<br>`;
+          }
+          layer.bindPopup(contenido);
+        }
+      }).addTo(map);
+      if (capas[nombre].getLayers().length > 0) {
+        map.fitBounds(capas[nombre].getBounds());
+      }
+    } else {
+      if (capas[nombre]) {
+        map.removeLayer(capas[nombre]);
+        delete capas[nombre];
+      }
+    }
+  }
+
+  async function toggleReportes(checkbox) {
+    if (checkbox.checked) {
+      capaReportes = await cargarReportes();
+    } else {
+      if (capaReportes) {
+        map.removeLayer(capaReportes);
+        capaReportes = null;
+      }
+    }
+  }
+
+  async function cargarReportes() {
+    const res = await fetch(`${url}/rest/v1/reportes?select=*`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}` }
+    });
+    const data = await res.json();
+    const features = data.filter(r => r.geom).map(r => ({
+      type: "Feature",
+      geometry: r.geom,
+      properties: r
+    }));
+    const geojson = { type: "FeatureCollection", features };
+    const capa = L.geoJSON(geojson, {
+      pointToLayer: (f, latlng) => L.circleMarker(latlng, { radius: 6, color: "red" }),
+      onEachFeature: (f, layer) => {
+        layer.bindPopup(`<strong>${f.properties.propietario}</strong><br>${f.properties.problema}<br>${f.properties.observaciones}`);
+      }
+    }).addTo(map);
+    return capa;
+  }
+
+  document.getElementById('formulario').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const datos = {
+      propietario: form.propietario.value,
+      tramite: form.tramite.value,
+      problema: form.problema.value,
+      observaciones: form.observaciones.value,
+      latitud: parseFloat(form.latitud.value),
+      longitud: parseFloat(form.longitud.value)
+    };
+
+    const res = await fetch(`${url}/rest/v1/reportes`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: key,
+        Authorization: `Bearer ${key}`
+      },
+      body: JSON.stringify(datos)
+    });
+
+    const status = document.getElementById('form-status');
+    if (res.ok) {
+      status.textContent = "✅ Reporte enviado con éxito";
+      form.reset();
+      if (capaReportes) {
+        map.removeLayer(capaReportes);
+      }
+      capaReportes = await cargarReportes();
+    } else {
+      const error = await res.text();
+      status.textContent = "❌ Error: " + error;
+    }
+  });
+</script>
+
+</body>
+</html>
