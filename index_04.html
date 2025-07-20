@@ -2,195 +2,61 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Geoportal Catastral - Quito</title>
+  <title>Mapa de prueba - Lotes</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    html, body { margin: 0; padding: 0; font-family: sans-serif; }
-    #map { position: absolute; top: 0; bottom: 0; right: 0; left: 300px; }
-    #sidebar {
-      width: 280px;
-      position: absolute;
-      top: 0; bottom: 0; left: 0;
-      background: #f2f2f2;
-      padding: 1em;
-      box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-      overflow-y: auto;
-    }
-    h2 { margin-top: 0; }
-    label { display: block; margin-top: 1em; }
-    input, textarea { width: 100%; padding: 0.5em; margin-top: 0.3em; }
-    input[type="checkbox"] { width: auto; margin-right: 0.5em; }
-    button { margin-top: 1em; width: 100%; padding: 0.6em; background: #004b87; color: white; border: none; cursor: pointer; }
-    footer {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      width: 280px;
-      padding: .5em;
-      background: #004b87;
-      color: white;
-      font-size: .9em;
-      text-align: center;
-    }
+    html, body { margin: 0; height: 100%; }
+    #map { width: 100%; height: 100vh; }
   </style>
 </head>
 <body>
-
-<div id="sidebar">
-  <h2>🗺️ Geoportal Catastral</h2>
-
-  <label><input type="checkbox" value="accidentes_geojson" onchange="toggleLayer(this)"> Accidentes</label>
-  <label><input type="checkbox" value="aiva_geojson" onchange="toggleLayer(this)"> AIVA</label>
-  <label><input type="checkbox" value="construcciones_geojson" onchange="toggleLayer(this)"> Construcciones</label>
-  <label><input type="checkbox" value="lotes_geojson" onchange="toggleLayer(this)"> Lotes</label>
-  <label><input type="checkbox" value="manzana_geojson" onchange="toggleLayer(this)"> Manzanas</label>
-  <label><input type="checkbox" onchange="toggleReportes(this)"> Ver reportes</label>
-
-  <form id="formulario">
-    <label>Nombre del propietario:<input name="propietario" required></label>
-    <label>Nro. de trámite:<input name="tramite" required></label>
-    <label>Tipo de problema:<input name="problema"></label>
-    <label>Observaciones:<textarea name="observaciones"></textarea></label>
-    <label>Latitud:<input name="latitud" id="latitud" required></label>
-    <label>Longitud:<input name="longitud" id="longitud" required></label>
-    <button type="button" onclick="setLocation()">Usar mi ubicación</button>
-    <button type="submit">Enviar reporte</button>
-    <div id="form-status"></div>
-  </form>
-
-  <footer>
-    Municipio de Quito © 2025
-  </footer>
-</div>
-
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
   const map = L.map('map').setView([-0.22985, -78.52495], 14);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors'
+    attribution: '© OpenStreetMap contributors'
   }).addTo(map);
 
-  const url = "https://wtuhbbmapoindpuaywxo.supabase.co";
-  const key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0dWhiYm1hcG9pbmRwdWF5d3hvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3Mjc5NTEsImV4cCI6MjA2ODMwMzk1MX0.1vH0zSrQ5EHHz1p_SS3gtzyDGTBpzHBOjq5ART7Uc8k";
+  const supabaseUrl = "https://wtuhbbmapoindpuaywxo.supabase.co";
+  const apiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0dWhiYm1hcG9pbmRwdWF5d3hvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3Mjc5NTEsImV4cCI6MjA2ODMwMzk1MX0.1vH0zSrQ5EHHz1p_SS3gtzyDGTBpzHBOjq5ART7Uc8k";
 
-  const capas = {};
-  let capaReportes = null;
-
-  function setLocation() {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(pos => {
-        document.getElementById('latitud').value = pos.coords.latitude;
-        document.getElementById('longitud').value = pos.coords.longitude;
-      }, err => alert("No se pudo obtener la ubicación"));
-    } else {
-      alert("Geolocalización no soportada");
-    }
-  }
-
-  async function toggleLayer(checkbox) {
-    const nombre = checkbox.value;
-    if (checkbox.checked) {
-      const res = await fetch(`${url}/rest/v1/${nombre}?select=*`, {
-        headers: { apikey: key, Authorization: `Bearer ${key}` }
+  async function cargarLotes() {
+    try {
+      const res = await fetch(`${supabaseUrl}/rest/v1/lotes_geojson?select=*`, {
+        headers: { apikey: apiKey, Authorization: `Bearer ${apiKey}` }
       });
-      const datos = await res.json();
+      if (!res.ok) throw new Error("Error cargando datos: " + res.statusText);
+      const data = await res.json();
       const geojson = {
         type: "FeatureCollection",
-        features: datos.map(f => {
-          const { geom, ...props } = f;
-          return { type: "Feature", properties: props, geometry: f.geom };
-        })
+        features: data.map(f => ({
+          type: "Feature",
+          properties: f,
+          geometry: f.geom
+        }))
       };
-      capas[nombre] = L.geoJSON(geojson, {
-        onEachFeature: (f, layer) => {
-          let contenido = "<strong>Información:</strong><br>";
-          for (const [k, v] of Object.entries(f.properties)) {
-            contenido += `<strong>${k}</strong>: ${v}<br>`;
+      const capa = L.geoJSON(geojson, {
+        onEachFeature: (feature, layer) => {
+          let popup = "<strong>Lote</strong><br>";
+          for (const [k, v] of Object.entries(feature.properties)) {
+            if (k !== 'geom') popup += `<strong>${k}</strong>: ${v}<br>`;
           }
-          layer.bindPopup(contenido);
+          layer.bindPopup(popup);
         }
       }).addTo(map);
-      if (capas[nombre].getLayers().length > 0) {
-        map.fitBounds(capas[nombre].getBounds());
+      if (capa.getLayers().length > 0) {
+        map.fitBounds(capa.getBounds());
       }
-    } else {
-      if (capas[nombre]) {
-        map.removeLayer(capas[nombre]);
-        delete capas[nombre];
-      }
+    } catch (err) {
+      console.error("❌ Error:", err);
+      alert("No se pudo cargar la capa de lotes.");
     }
   }
 
-  async function toggleReportes(checkbox) {
-    if (checkbox.checked) {
-      capaReportes = await cargarReportes();
-    } else {
-      if (capaReportes) {
-        map.removeLayer(capaReportes);
-        capaReportes = null;
-      }
-    }
-  }
-
-  async function cargarReportes() {
-    const res = await fetch(`${url}/rest/v1/reportes?select=*`, {
-      headers: { apikey: key, Authorization: `Bearer ${key}` }
-    });
-    const data = await res.json();
-    const features = data.filter(r => r.geom).map(r => ({
-      type: "Feature",
-      geometry: r.geom,
-      properties: r
-    }));
-    const geojson = { type: "FeatureCollection", features };
-    const capa = L.geoJSON(geojson, {
-      pointToLayer: (f, latlng) => L.circleMarker(latlng, { radius: 6, color: "red" }),
-      onEachFeature: (f, layer) => {
-        layer.bindPopup(`<strong>${f.properties.propietario}</strong><br>${f.properties.problema}<br>${f.properties.observaciones}`);
-      }
-    }).addTo(map);
-    return capa;
-  }
-
-  document.getElementById('formulario').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const form = e.target;
-    const datos = {
-      propietario: form.propietario.value,
-      tramite: form.tramite.value,
-      problema: form.problema.value,
-      observaciones: form.observaciones.value,
-      latitud: parseFloat(form.latitud.value),
-      longitud: parseFloat(form.longitud.value)
-    };
-
-    const res = await fetch(`${url}/rest/v1/reportes`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: key,
-        Authorization: `Bearer ${key}`
-      },
-      body: JSON.stringify(datos)
-    });
-
-    const status = document.getElementById('form-status');
-    if (res.ok) {
-      status.textContent = "✅ Reporte enviado con éxito";
-      form.reset();
-      if (capaReportes) {
-        map.removeLayer(capaReportes);
-      }
-      capaReportes = await cargarReportes();
-    } else {
-      const error = await res.text();
-      status.textContent = "❌ Error: " + error;
-    }
-  });
+  cargarLotes();
 </script>
-
 </body>
 </html>
