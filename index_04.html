@@ -40,18 +40,21 @@
 <div id="sidebar">
   <h2>🗺️ Geoportal Catastral</h2>
 
-  <label><input type="checkbox" value="lotes" onchange="toggleRPC(this)"> Lotes</label>
-  <label><input type="checkbox" value="manzana" onchange="toggleRPC(this)"> Manzanas</label>
-  <label><input type="checkbox" value="construcciones" onchange="toggleRPC(this)"> Construcciones</label>
-  <label><input type="checkbox" value="reportes" onchange="toggleReportes(this)"> Ver reportes</label>
+  <label><input type="checkbox" value="accidentes_geojson" onchange="toggleLayer(this)"> Accidentes</label>
+  <label><input type="checkbox" value="aiva_geojson" onchange="toggleLayer(this)"> AIVA</label>
+  <label><input type="checkbox" value="construcciones_geojson" onchange="toggleLayer(this)"> Construcciones</label>
+  <label><input type="checkbox" value="lotes_geojson" onchange="toggleLayer(this)"> Lotes</label>
+  <label><input type="checkbox" value="manzana_geojson" onchange="toggleLayer(this)"> Manzanas</label>
+  <label><input type="checkbox" onchange="toggleReportes(this)"> Ver reportes</label>
 
   <form id="formulario">
     <label>Nombre del propietario:<input name="propietario" required></label>
     <label>Nro. de trámite:<input name="tramite" required></label>
     <label>Tipo de problema:<input name="problema"></label>
     <label>Observaciones:<textarea name="observaciones"></textarea></label>
-    <label>Latitud:<input name="latitud" required></label>
-    <label>Longitud:<input name="longitud" required></label>
+    <label>Latitud:<input name="latitud" id="latitud" required></label>
+    <label>Longitud:<input name="longitud" id="longitud" required></label>
+    <button type="button" onclick="setLocation()">Usar mi ubicación</button>
     <button type="submit">Enviar reporte</button>
     <div id="form-status"></div>
   </form>
@@ -74,134 +77,35 @@
   const key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0dWhiYm1hcG9pbmRwdWF5d3hvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3Mjc5NTEsImV4cCI6MjA2ODMwMzk1MX0.1vH0zSrQ5EHHz1p_SS3gtzyDGTBpzHBOjq5ART7Uc8k";
 
   const capas = {};
-
-  async function toggleRPC(checkbox) {
-    const nombre = checkbox.value;
-    const funcion = nombre + '_en_bbox';
-
-    if (checkbox.checked) {
-      try {
-        const bounds = map.getBounds();
-        const sw = bounds.getSouthWest();
-        const ne = bounds.getNorthEast();
-
-        const params = new URLSearchParams({
-          minx: sw.lng,
-          miny: sw.lat,
-          maxx: ne.lng,
-          maxy: ne.lat
-        });
-
-        const res = await fetch(`${url}/rest/v1/rpc/${funcion}?${params.toString()}`, {
-          headers: { apikey: key, Authorization: `Bearer ${key}` }
-        });
-
-        if (!res.ok) throw new Error(`Error al cargar ${nombre}: ${res.statusText}`);
-        const datos = await res.json();
-
-        const geojson = {
-          type: "FeatureCollection",
-          features: datos.map(f => {
-            const { geom, ...props } = f;
-            return { type: "Feature", properties: props, geometry: geom };
-          })
-        };
-
-        capas[nombre] = L.geoJSON(geojson, {
-          onEachFeature: (f, layer) => {
-            let contenido = "<strong>Información:</strong><br>";
-            for (const [key, value] of Object.entries(f.properties)) {
-              contenido += `<strong>${key}</strong>: ${value}<br>`;
-            }
-            layer.bindPopup(contenido);
-          }
-        }).addTo(map);
-
-        if (capas[nombre].getLayers().length > 0) {
-          map.fitBounds(capas[nombre].getBounds());
-        }
-
-      } catch (err) {
-        console.error(err);
-        alert("❌ No se pudo cargar la capa " + nombre);
-      }
-    } else {
-      if (capas[nombre]) {
-        map.removeLayer(capas[nombre]);
-        delete capas[nombre];
-      }
-    }
-  }
-
   let capaReportes = null;
 
-  async function toggleReportes(checkbox) {
+  function setLocation() {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(pos => {
+        document.getElementById('latitud').value = pos.coords.latitude;
+        document.getElementById('longitud').value = pos.coords.longitude;
+      }, err => alert("No se pudo obtener la ubicación"));
+    } else {
+      alert("Geolocalización no soportada");
+    }
+  }
+
+  async function toggleLayer(checkbox) {
+    const nombre = checkbox.value;
     if (checkbox.checked) {
-      capaReportes = await cargarReportes();
-    } else {
-      if (capaReportes) {
-        map.removeLayer(capaReportes);
-        capaReportes = null;
-      }
-    }
-  }
-
-  async function cargarReportes() {
-    const res = await fetch(`${url}/rest/v1/reportes?select=*`, {
-      headers: { apikey: key, Authorization: `Bearer ${key}` }
-    });
-    const data = await res.json();
-    const features = data.filter(r => r.geom).map(r => ({
-      type: "Feature",
-      geometry: r.geom,
-      properties: r
-    }));
-    const geojson = { type: "FeatureCollection", features };
-    const capa = L.geoJSON(geojson, {
-      pointToLayer: (f, latlng) => L.circleMarker(latlng, { radius: 6, color: "red" }),
-      onEachFeature: (f, layer) => {
-        layer.bindPopup(`<strong>${f.properties.propietario}</strong><br>${f.properties.problema}<br>${f.properties.observaciones}`);
-      }
-    }).addTo(map);
-    return capa;
-  }
-
-  document.getElementById('formulario').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const form = e.target;
-    const datos = {
-      propietario: form.propietario.value,
-      tramite: form.tramite.value,
-      problema: form.problema.value,
-      observaciones: form.observaciones.value,
-      latitud: parseFloat(form.latitud.value),
-      longitud: parseFloat(form.longitud.value)
-    };
-
-    const res = await fetch(`${url}/rest/v1/reportes`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: key,
-        Authorization: `Bearer ${key}`
-      },
-      body: JSON.stringify(datos)
-    });
-
-    const status = document.getElementById('form-status');
-    if (res.ok) {
-      status.textContent = "✅ Reporte enviado con éxito";
-      form.reset();
-      if (capaReportes) {
-        map.removeLayer(capaReportes);
-      }
-      capaReportes = await cargarReportes();
-    } else {
-      const error = await res.text();
-      status.textContent = "❌ Error: " + error;
-    }
-  });
-</script>
-
-</body>
-</html>
+      const res = await fetch(`${url}/rest/v1/${nombre}?select=*`, {
+        headers: { apikey: key, Authorization: `Bearer ${key}` }
+      });
+      const datos = await res.json();
+      const geojson = {
+        type: "FeatureCollection",
+        features: datos.map(f => {
+          const { geom, ...props } = f;
+          return { type: "Feature", properties: props, geometry: f.geom };
+        })
+      };
+      capas[nombre] = L.geoJSON(geojson, {
+        onEachFeature: (f, layer) => {
+          let contenido = "<strong>Información:</strong><br>";
+          for (const [k, v] of Object.entries(f.properties)) {
+            contenido += `<strong>${k}</strong>: ${v}<br>`;
