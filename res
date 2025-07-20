@@ -69,12 +69,12 @@
 
     if (checkbox.checked) {
       const res = await fetch(`${url}/rest/v1/${nombre}?select=*&limit=10000`, {
-        headers: {
-          apikey: key,
-          Authorization: `Bearer ${key}`
-        }
-      });
-      const datos = await res.json();
+  headers: {
+    apikey: key,
+    Authorization: `Bearer ${key}`
+  }
+});
+const datos = await res.json();
       const geojson = {
         type: "FeatureCollection",
         features: datos.map(f => {
