@@ -2,13 +2,13 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Geovisor Catastral del Centro de Quito</title>
+  <title>Geoportal Catastral del Centro de Quito</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     html, body { margin: 0; height: 100%; font-family: 'Segoe UI', sans-serif; }
-    #map { width: 100%; height: 100vh; }
+    #map { width: 100%; height: 100vh; position: relative; }
     #panel {
       position: absolute;
       top: 1em;
@@ -21,6 +21,13 @@
       overflow-y: auto;
       max-height: 95vh;
       border-radius: 8px;
+    }
+    #logo {
+      position: absolute;
+      top: 1em;
+      right: 1em;
+      width: 120px;
+      z-index: 1001;
     }
     h1 {
       margin-top: 0;
@@ -54,9 +61,11 @@
   </style>
 </head>
 <body>
-<div id="map"></div>
+<div id="map">
+  <img id="logo" src="9eadb191-ca8c-40af-ac1d-59e82cd78d38.png" alt="Logo Quito">
+</div>
 <div id="panel">
-  <h1>Geovisor Catastral del Centro de Quito</h1>
+  <h1>Geoportal Catastral del Centro de Quito</h1>
 
   <h3>Capas Catastrales</h3>
   <label><input type="checkbox" value="lotes_geojson"> Lotes</label>
@@ -163,12 +172,13 @@ window.addEventListener('DOMContentLoaded', () => {
       const features = data.filter(r => r.geom).map(r => ({
         type: 'Feature', geometry: r.geom, properties: r
       }));
-      L.geoJSON({ type: 'FeatureCollection', features }, {
+      const capa = L.geoJSON({ type: 'FeatureCollection', features }, {
         pointToLayer: (f, latlng) => L.circleMarker(latlng, { radius: 6, color: 'red' }),
         onEachFeature: (f, layer) => {
           layer.bindPopup(`<strong>${f.properties.propietario}</strong><br>${f.properties.problema}<br>${f.properties.observaciones}`);
         }
       }).addTo(map);
+      if (capa.getLayers().length > 0) map.fitBounds(capa.getBounds());
     });
   }
 
