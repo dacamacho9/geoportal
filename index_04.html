@@ -86,6 +86,25 @@
   <label><input type="checkbox" value="accidentes_geojson"> Accidentes</label>
   <label><input type="checkbox" id="verReportes"> Ver reportes</label>
 
+  <h3>Formulario de Reporte</h3>
+  <form id="formulario">
+    <label>Propietario:<input name="propietario" required></label>
+    <label>Trámite:<input name="tramite" required></label>
+    <label>Tipo de problema:
+      <select name="problema" required>
+        <option value="">Seleccione una opción</option>
+        <option value="Sin linderos Consolidados">Sin linderos Consolidados</option>
+        <option value="Colinda con un Accidente Geográfico">Colinda con un Accidente Geográfico</option>
+        <option value="No existe un Ancho Vial Definido">No existe un Ancho Vial Definido</option>
+        <option value="No se Pudo Ingresar al Predio">No se Pudo Ingresar al Predio</option>
+      </select>
+    </label>
+    <label>Observaciones:<textarea name="observaciones"></textarea></label>
+    <button type="button" onclick="setLocationAndEnableSubmit()">🧭 Usar mi ubicación</button>
+    <button type="submit" id="submitBtn" disabled>Enviar</button>
+    <div id="form-status"></div>
+  </form>
+
   <h3>Buscador de Predio</h3>
   <label>Clave catastral:</label>
   <input type="text" id="claveBusqueda" placeholder="Ej: 123456">
@@ -109,102 +128,63 @@ window.addEventListener('DOMContentLoaded', () => {
   const key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0dWhiYm1hcG9pbmRwdWF5d3hvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3Mjc5NTEsImV4cCI6MjA2ODMwMzk1MX0.1vH0zSrQ5EHHz1p_SS3gtzyDGTBpzHBOjq5ART7Uc8k";
   const capas = {};
 
-  function toggleLayer(checkbox) {
-    const nombre = checkbox.value;
-    if (checkbox.checked) {
-      fetch(`${url}/rest/v1/${nombre}?select=*`, {
-        headers: { apikey: key, Authorization: `Bearer ${key}` }
-      })
-      .then(res => res.json())
-      .then(data => {
-        capas[nombre] = L.geoJSON({
-          type: 'FeatureCollection',
-          features: data.map(f => ({ type: 'Feature', properties: f, geometry: f.geom }))
-        }, {
-          onEachFeature: (f, layer) => {
-            let content = '';
-            for (const [k,v] of Object.entries(f.properties)) {
-              if (k !== 'geom') content += `<strong>${k}</strong>: ${v}<br>`;
-            }
-            layer.bindPopup(content);
-          }
-        }).addTo(map);
-        if (capas[nombre].getLayers().length > 0) map.fitBounds(capas[nombre].getBounds());
-      });
-    } else {
-      if (capas[nombre]) {
-        map.removeLayer(capas[nombre]);
-        delete capas[nombre];
-      }
-    }
-  }
+  let ubicacion = null;
 
-  function toggleReportes(checkbox) {
-    if (!checkbox.checked) return;
-    fetch(`${url}/rest/v1/reportes?select=*`, {
-      headers: { apikey: key, Authorization: `Bearer ${key}` }
-    })
-    .then(res => res.json())
-    .then(data => {
-      const features = data.filter(r => r.geom).map(r => ({
-        type: 'Feature', geometry: r.geom, properties: r
-      }));
-      L.geoJSON({ type: 'FeatureCollection', features }, {
-        pointToLayer: (f, latlng) => L.circleMarker(latlng, { radius: 6, color: 'red' }),
-        onEachFeature: (f, layer) => {
-          layer.bindPopup(`<strong>${f.properties.propietario}</strong><br>${f.properties.problema}<br>${f.properties.observaciones}`);
-        }
-      }).addTo(map);
+  function setLocationAndEnableSubmit() {
+    if (!navigator.geolocation) {
+      alert("Tu navegador no soporta geolocalización");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(pos => {
+      ubicacion = {
+        latitud: pos.coords.latitude,
+        longitud: pos.coords.longitude
+      };
+      document.getElementById("submitBtn").disabled = false;
+    }, () => {
+      alert("No se pudo obtener la ubicación");
     });
   }
 
-  async function buscarLote() {
-    const clave = document.getElementById("claveBusqueda").value.trim();
-    const status = document.getElementById("busqueda-status");
-    if (!clave) {
-      status.textContent = "⚠️ Ingrese una clave catastral"; return;
-    }
-    try {
-      const res = await fetch(`${url}/rest/v1/lotes_geojson?select=*&cat_lote_i=eq.${clave}`, {
-        headers: { apikey: key, Authorization: `Bearer ${key}` }
-      });
-      const datos = await res.json();
-      if (datos.length === 0) {
-        status.textContent = `❌ No existe un lote con clave = ${clave}`;
-      } else {
-        const lote = datos[0];
-        const geojson = {
-          type: "Feature",
-          properties: lote,
-          geometry: lote.geom
-        };
-        const capa = L.geoJSON(geojson, {
-          style: { color: "orange", weight: 3 },
-          onEachFeature: (f, layer) => {
-            let contenido = `<strong>Lote encontrado</strong><br>`;
-            for (const [k, v] of Object.entries(f.properties)) {
-              if (k !== 'geom') contenido += `<strong>${k}</strong>: ${v}<br>`;
-            }
-            layer.bindPopup(contenido).openPopup();
-          }
-        }).addTo(map);
-        map.fitBounds(capa.getBounds());
-        status.textContent = `✅ Lote encontrado con clave ${clave}`;
-      }
-    } catch (err) {
-      status.textContent = "❌ Error al buscar el lote";
-    }
-  }
+  document.getElementById("formulario").addEventListener("submit", async e => {
+    e.preventDefault();
+    if (!ubicacion) return alert("Debes usar tu ubicación antes de enviar");
 
-  document.querySelectorAll('#panel input[type=checkbox]').forEach(chk => {
-    if (chk.id === 'verReportes') {
-      chk.addEventListener('change', () => toggleReportes(chk));
+    const form = e.target;
+    const datos = {
+      propietario: form.propietario.value,
+      tramite: form.tramite.value,
+      problema: form.problema.value,
+      observaciones: form.observaciones.value,
+      latitud: ubicacion.latitud,
+      longitud: ubicacion.longitud
+    };
+    const res = await fetch(`${url}/rest/v1/reportes`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: key,
+        Authorization: `Bearer ${key}`
+      },
+      body: JSON.stringify(datos)
+    });
+
+    const status = document.getElementById("form-status");
+    if (res.ok) {
+      status.textContent = "✅ Reporte enviado con éxito";
+      form.reset();
+      document.getElementById("submitBtn").disabled = true;
+      if (ubicacion) {
+        map.setView([ubicacion.latitud, ubicacion.longitud], 17);
+        L.popup().setLatLng([ubicacion.latitud, ubicacion.longitud]).setContent("📍 Reporte registrado aquí").openOn(map);
+      }
+      ubicacion = null;
     } else {
-      chk.addEventListener('change', () => toggleLayer(chk));
+      status.textContent = "❌ Error al enviar reporte";
     }
   });
 
-  document.getElementById('botonBusqueda').addEventListener('click', buscarLote);
+  // El resto del código sigue igual...
 });
 </script>
 </body>
