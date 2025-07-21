@@ -19,9 +19,9 @@
       box-shadow: 0 0 6px rgba(0,0,0,0.3);
     }
     label { display: block; margin-top: .5em; }
-    input, textarea { width: 100%; padding: .4em; }
+    input, select, textarea { width: 100%; padding: .4em; }
     button { margin-top: .5em; width: 100%; padding: .6em; background: #004b87; color: white; border: none; cursor: pointer; }
-    #form-status { margin-top: .5em; font-weight: bold; }
+    #form-status, #busqueda-status { margin-top: .5em; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -33,58 +33,64 @@
   <label><input type="checkbox" value="aiva_geojson" onchange="toggleLayer(this)"> AIVA</label>
   <label><input type="checkbox" value="accidentes_geojson" onchange="toggleLayer(this)"> Accidentes</label>
   <label><input type="checkbox" onchange="toggleReportes(this)"> Ver reportes</label>
+
   <form id="formulario">
     <label>Propietario:<input name="propietario" required></label>
     <label>Trámite:<input name="tramite" required></label>
-    <label>Problema:<input name="problema"></label>
+    <label>Tipo de problema:
+      <select name="problema" required>
+        <option value="">Seleccione una opción</option>
+        <option value="Sin linderos Consolidados">Sin linderos Consolidados</option>
+        <option value="Colinda con un Accidente Geográfico">Colinda con un Accidente Geográfico</option>
+        <option value="No existe un Ancho Vial Definido">No existe un Ancho Vial Definido</option>
+        <option value="No se Pudo Ingresar al Predio">No se Pudo Ingresar al Predio</option>
+      </select>
+    </label>
     <label>Observaciones:<textarea name="observaciones"></textarea></label>
     <button type="button" onclick="setLocationAndEnableSubmit()">Usar mi ubicación</button>
     <button type="submit" id="submitBtn" disabled>Enviar</button>
     <div id="form-status"></div>
   </form>
+
+  <hr>
+  <label>Búsqueda por cat_lote_i:</label>
+  <input type="text" id="claveBusqueda" placeholder="Ej: 123456">
+  <button id="botonBusqueda">Buscar lote</button>
+  <div id="busqueda-status"></div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+const url = "https://wtuhbbmapoindpuaywxo.supabase.co";
+const key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0dWhiYm1hcG9pbmRwdWF5d3hvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3Mjc5NTEsImV4cCI6MjA2ODMwMzk1MX0.1vH0zSrQ5EHHz1p_SS3gtzyDGTBpzHBOjq5ART7Uc8k";
 const map = L.map('map').setView([-0.22985, -78.52495], 14);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '© OpenStreetMap contributors'
 }).addTo(map);
 
-const url = "https://wtuhbbmapoindpuaywxo.supabase.co";
-const key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0dWhiYm1hcG9pbmRwdWF5d3hvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3Mjc5NTEsImV4cCI6MjA2ODMwMzk1MX0.1vH0zSrQ5EHHz1p_SS3gtzyDGTBpzHBOjq5ART7Uc8k";
-
 const capas = {};
-let capaReportes = null;
-let ubicacion = null;
-
-async function toggleLayer(checkbox) {
+function toggleLayer(checkbox) {
   const nombre = checkbox.value;
   if (checkbox.checked) {
-    const res = await fetch(`${url}/rest/v1/${nombre}?select=*`, {
+    fetch(`${url}/rest/v1/${nombre}?select=*`, {
       headers: { apikey: key, Authorization: `Bearer ${key}` }
-    });
-    const datos = await res.json();
-    const geojson = {
-      type: "FeatureCollection",
-      features: datos.map(f => ({
-        type: "Feature",
-        properties: f,
-        geometry: f.geom
-      }))
-    };
-    capas[nombre] = L.geoJSON(geojson, {
-      onEachFeature: (f, layer) => {
-        let popup = "<strong>Información:</strong><br>";
-        for (const [k, v] of Object.entries(f.properties)) {
-          if (k !== 'geom') popup += `<strong>${k}</strong>: ${v}<br>`;
+    })
+    .then(res => res.json())
+    .then(data => {
+      capas[nombre] = L.geoJSON({
+        type: 'FeatureCollection',
+        features: data.map(f => ({ type: 'Feature', properties: f, geometry: f.geom }))
+      }, {
+        onEachFeature: (f, layer) => {
+          let content = '';
+          for (const [k,v] of Object.entries(f.properties)) {
+            if (k !== 'geom') content += `<strong>${k}</strong>: ${v}<br>`;
+          }
+          layer.bindPopup(content);
         }
-        layer.bindPopup(popup);
-      }
-    }).addTo(map);
-    if (capas[nombre].getLayers().length > 0) {
-      map.fitBounds(capas[nombre].getBounds());
-    }
+      }).addTo(map);
+      if (capas[nombre].getLayers().length > 0) map.fitBounds(capas[nombre].getBounds());
+    });
   } else {
     if (capas[nombre]) {
       map.removeLayer(capas[nombre]);
@@ -93,63 +99,48 @@ async function toggleLayer(checkbox) {
   }
 }
 
-async function toggleReportes(checkbox) {
-  if (checkbox.checked) {
-    capaReportes = await cargarReportes();
-  } else {
-    if (capaReportes) map.removeLayer(capaReportes);
-  }
-}
-
-async function cargarReportes() {
-  const res = await fetch(`${url}/rest/v1/reportes?select=*`, {
+function toggleReportes(checkbox) {
+  if (!checkbox.checked) return;
+  fetch(`${url}/rest/v1/reportes?select=*`, {
     headers: { apikey: key, Authorization: `Bearer ${key}` }
+  })
+  .then(res => res.json())
+  .then(data => {
+    const features = data.filter(r => r.geom).map(r => ({
+      type: 'Feature', geometry: r.geom, properties: r
+    }));
+    L.geoJSON({ type: 'FeatureCollection', features }, {
+      pointToLayer: (f, latlng) => L.circleMarker(latlng, { radius: 6, color: 'red' }),
+      onEachFeature: (f, layer) => {
+        layer.bindPopup(`<strong>${f.properties.propietario}</strong><br>${f.properties.problema}<br>${f.properties.observaciones}`);
+      }
+    }).addTo(map);
   });
-  const data = await res.json();
-  const features = data.filter(r => r.geom).map(r => ({
-    type: "Feature",
-    geometry: r.geom,
-    properties: r
-  }));
-  const geojson = { type: "FeatureCollection", features };
-  const capa = L.geoJSON(geojson, {
-    pointToLayer: (f, latlng) => L.circleMarker(latlng, { radius: 6, color: "red" }),
-    onEachFeature: (f, layer) => {
-      layer.bindPopup(`<strong>${f.properties.propietario}</strong><br>${f.properties.problema}<br>${f.properties.observaciones}`);
-    }
-  }).addTo(map);
-  return capa;
 }
 
 function setLocationAndEnableSubmit() {
-  if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(pos => {
-      ubicacion = {
-        latitud: pos.coords.latitude,
-        longitud: pos.coords.longitude
-      };
-      document.getElementById('submitBtn').disabled = false;
-      alert("Ubicación capturada");
-    }, err => alert("No se pudo obtener la ubicación"));
-  } else {
-    alert("Geolocalización no soportada");
-  }
+  if (!navigator.geolocation) return alert("Geolocalización no soportada");
+  navigator.geolocation.getCurrentPosition(pos => {
+    window.ubicacion = {
+      latitud: pos.coords.latitude,
+      longitud: pos.coords.longitude
+    };
+    document.getElementById('submitBtn').disabled = false;
+    alert("Ubicación capturada");
+  }, () => alert("No se pudo obtener la ubicación"));
 }
 
-document.getElementById('formulario').addEventListener('submit', async (e) => {
+document.getElementById('formulario').addEventListener('submit', async e => {
   e.preventDefault();
-  if (!ubicacion) {
-    alert("Primero usa el botón 'Usar mi ubicación'");
-    return;
-  }
+  if (!window.ubicacion) return alert("Primero usa el botón 'Usar mi ubicación'");
   const form = e.target;
   const datos = {
     propietario: form.propietario.value,
     tramite: form.tramite.value,
     problema: form.problema.value,
     observaciones: form.observaciones.value,
-    latitud: ubicacion.latitud,
-    longitud: ubicacion.longitud
+    latitud: window.ubicacion.latitud,
+    longitud: window.ubicacion.longitud
   };
   const res = await fetch(`${url}/rest/v1/reportes`, {
     method: "POST",
@@ -165,17 +156,51 @@ document.getElementById('formulario').addEventListener('submit', async (e) => {
     status.textContent = "✅ Reporte enviado con éxito";
     form.reset();
     document.getElementById('submitBtn').disabled = true;
-    if (capaReportes) map.removeLayer(capaReportes);
-    capaReportes = await cargarReportes();
-    map.setView([ubicacion.latitud, ubicacion.longitud], 17);
-    L.popup()
-      .setLatLng([ubicacion.latitud, ubicacion.longitud])
-      .setContent("📍 Reporte registrado aquí")
-      .openOn(map);
-    ubicacion = null;
+    if (window.ubicacion) {
+      map.setView([window.ubicacion.latitud, window.ubicacion.longitud], 17);
+      L.popup().setLatLng([window.ubicacion.latitud, window.ubicacion.longitud]).setContent("📍 Reporte registrado aquí").openOn(map);
+    }
+    window.ubicacion = null;
   } else {
     const error = await res.text();
     status.textContent = "❌ Error: " + error;
+  }
+});
+
+document.getElementById('botonBusqueda').addEventListener('click', async () => {
+  const clave = document.getElementById("claveBusqueda").value.trim();
+  const status = document.getElementById("busqueda-status");
+  if (!clave) return status.textContent = "⚠️ Ingrese una clave catastral";
+  try {
+    const res = await fetch(`${url}/rest/v1/lotes_geojson?select=*&cat_lote_i=eq.${clave}`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}` }
+    });
+    const datos = await res.json();
+    if (datos.length === 0) {
+      status.textContent = `❌ No existe un lote con cat_lote_i = ${clave}`;
+    } else {
+      const lote = datos[0];
+      const geojson = {
+        type: "Feature",
+        properties: lote,
+        geometry: lote.geom
+      };
+      const capa = L.geoJSON(geojson, {
+        style: { color: "orange", weight: 3 },
+        onEachFeature: (f, layer) => {
+          let contenido = `<strong>Lote encontrado</strong><br>`;
+          for (const [k, v] of Object.entries(f.properties)) {
+            if (k !== 'geom') contenido += `<strong>${k}</strong>: ${v}<br>`;
+          }
+          layer.bindPopup(contenido).openPopup();
+        }
+      }).addTo(map);
+      map.fitBounds(capa.getBounds());
+      status.textContent = `✅ Lote encontrado con cat_lote_i = ${clave}`;
+    }
+  } catch (err) {
+    console.error(err);
+    status.textContent = "❌ Error al buscar el lote";
   }
 });
 </script>
