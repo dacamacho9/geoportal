@@ -62,10 +62,16 @@
 </head>
 <body>
 <div id="map">
-  <img id="logo" src="9eadb191-ca8c-40af-ac1d-59e82cd78d38.png" alt="Logo Quito">
+  <img id="logo" src="/mnt/data/9eadb191-ca8c-40af-ac1d-59e82cd78d38.png" alt="Logo Quito">
 </div>
 <div id="panel">
   <h1>Geoportal Catastral del Centro de Quito</h1>
+
+  <h3>Buscador de Predio</h3>
+  <label>Clave catastral:</label>
+  <input type="text" id="claveBusqueda" placeholder="Ej: 123456">
+  <button id="botonBusqueda">Buscar lote</button>
+  <div id="busqueda-status"></div>
 
   <h3>Capas Catastrales</h3>
   <label><input type="checkbox" value="lotes_geojson"> Lotes</label>
@@ -94,12 +100,6 @@
     <button type="submit" id="submitBtn" disabled>Enviar</button>
     <div id="form-status"></div>
   </form>
-
-  <h3>Buscador de Predio</h3>
-  <label>Clave catastral:</label>
-  <input type="text" id="claveBusqueda" placeholder="Ej: 123456">
-  <button id="botonBusqueda">Buscar lote</button>
-  <div id="busqueda-status"></div>
 </div>
 
 <script>
@@ -132,36 +132,6 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function toggleLayer(checkbox) {
-    const nombre = checkbox.value;
-    if (checkbox.checked) {
-      fetch(`${url}/rest/v1/${nombre}?select=*`, {
-        headers: { apikey: key, Authorization: `Bearer ${key}` }
-      })
-        .then(res => res.json())
-        .then(data => {
-          capas[nombre] = L.geoJSON({
-            type: 'FeatureCollection',
-            features: data.map(f => ({ type: 'Feature', properties: f, geometry: f.geom }))
-          }, {
-            onEachFeature: (f, layer) => {
-              let content = '';
-              for (const [k,v] of Object.entries(f.properties)) {
-                if (k !== 'geom') content += `<strong>${k}</strong>: ${v}<br>`;
-              }
-              layer.bindPopup(content);
-            }
-          }).addTo(map);
-          if (capas[nombre].getLayers().length > 0) map.fitBounds(capas[nombre].getBounds());
-        });
-    } else {
-      if (capas[nombre]) {
-        map.removeLayer(capas[nombre]);
-        delete capas[nombre];
-      }
-    }
-  }
-
   function toggleReportes(checkbox) {
     if (!checkbox.checked) return;
     fetch(`${url}/rest/v1/reportes?select=*`, {
@@ -182,55 +152,7 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  async function buscarLote() {
-    const clave = document.getElementById("claveBusqueda").value.trim();
-    const status = document.getElementById("busqueda-status");
-    if (!clave) {
-      status.textContent = "⚠️ Ingrese una clave catastral"; return;
-    }
-    try {
-      const res = await fetch(`${url}/rest/v1/lotes_geojson?select=*&cat_lote_i=eq.${clave}`, {
-        headers: { apikey: key, Authorization: `Bearer ${key}` }
-      });
-      const datos = await res.json();
-      if (datos.length === 0) {
-        status.textContent = `❌ No existe un lote con clave = ${clave}`;
-      } else {
-        const lote = datos[0];
-        const geojson = {
-          type: "Feature",
-          properties: lote,
-          geometry: lote.geom
-        };
-        const capa = L.geoJSON(geojson, {
-          style: { color: "orange", weight: 3 },
-          onEachFeature: (f, layer) => {
-            let contenido = `<strong>Lote encontrado</strong><br>`;
-            for (const [k, v] of Object.entries(f.properties)) {
-              if (k !== 'geom') contenido += `<strong>${k}</strong>: ${v}<br>`;
-            }
-            layer.bindPopup(contenido).openPopup();
-          }
-        }).addTo(map);
-        map.fitBounds(capa.getBounds());
-        status.textContent = `✅ Lote encontrado con clave ${clave}`;
-      }
-    } catch (err) {
-      status.textContent = "❌ Error al buscar el lote";
-    }
-  }
-
-  document.querySelectorAll('#panel input[type=checkbox]').forEach(chk => {
-    if (chk.id === 'verReportes') {
-      chk.addEventListener('change', () => toggleReportes(chk));
-    } else {
-      chk.addEventListener('change', () => toggleLayer(chk));
-    }
-  });
-
   document.getElementById("botonUbicacion").addEventListener("click", setLocationAndEnableSubmit);
-  document.getElementById("botonBusqueda").addEventListener("click", buscarLote);
-
   document.getElementById("formulario").addEventListener("submit", async e => {
     e.preventDefault();
     if (!ubicacion) return alert("Debes usar tu ubicación antes de enviar");
