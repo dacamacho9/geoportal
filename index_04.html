@@ -15,7 +15,7 @@
       left: 1em;
       background: #fff;
       padding: 1.2em;
-      width: 320px;
+      width: 340px;
       z-index: 1000;
       box-shadow: 0 0 8px rgba(0,0,0,0.2);
       overflow-y: auto;
@@ -37,39 +37,19 @@
       border-bottom: 1px solid #ddd;
       padding-bottom: 0.2em;
     }
-    label {
-      display: block;
-      margin-top: .5em;
-      font-size: 0.9em;
-    }
+    label { display: block; margin-top: .5em; font-size: 0.9em; }
     input, select, textarea {
-      width: 100%;
-      padding: .4em;
-      font-size: 0.9em;
-      margin-top: 0.2em;
-      box-sizing: border-box;
-      border: 1px solid #ccc;
-      border-radius: 4px;
+      width: 100%; padding: .4em; font-size: 0.9em; margin-top: 0.2em;
+      box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;
     }
     button {
-      margin-top: .6em;
-      width: 100%;
-      padding: .6em;
-      background: #004b87;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 0.95em;
+      margin-top: .6em; width: 100%; padding: .6em;
+      background: #004b87; color: white; border: none;
+      border-radius: 4px; cursor: pointer; font-size: 0.95em;
     }
-    button:hover {
-      background: #0062a0;
-    }
-    #form-status, #busqueda-status {
-      margin-top: .5em;
-      font-weight: bold;
-      font-size: 0.9em;
-      color: #444;
+    button:hover { background: #0062a0; }
+    #form-status, #busqueda-status, #ubicacion-info {
+      margin-top: .5em; font-weight: bold; font-size: 0.9em; color: #444;
     }
   </style>
 </head>
@@ -100,7 +80,8 @@
       </select>
     </label>
     <label>Observaciones:<textarea name="observaciones"></textarea></label>
-    <button type="button" onclick="setLocationAndEnableSubmit()">🧭 Usar mi ubicación</button>
+    <button type="button" id="botonUbicacion">🧭 Usar mi ubicación</button>
+    <div id="ubicacion-info"></div>
     <button type="submit" id="submitBtn" disabled>Enviar</button>
     <div id="form-status"></div>
   </form>
@@ -131,8 +112,9 @@ window.addEventListener('DOMContentLoaded', () => {
   let ubicacion = null;
 
   function setLocationAndEnableSubmit() {
+    const output = document.getElementById("ubicacion-info");
     if (!navigator.geolocation) {
-      alert("Tu navegador no soporta geolocalización");
+      output.textContent = "❌ Tu navegador no soporta geolocalización";
       return;
     }
     navigator.geolocation.getCurrentPosition(pos => {
@@ -140,11 +122,14 @@ window.addEventListener('DOMContentLoaded', () => {
         latitud: pos.coords.latitude,
         longitud: pos.coords.longitude
       };
+      output.textContent = `📍 Ubicación detectada: ${ubicacion.latitud.toFixed(6)}, ${ubicacion.longitud.toFixed(6)}`;
       document.getElementById("submitBtn").disabled = false;
-    }, () => {
-      alert("No se pudo obtener la ubicación");
+    }, err => {
+      output.textContent = "❌ No se pudo obtener la ubicación";
     });
   }
+
+  document.getElementById("botonUbicacion").addEventListener("click", setLocationAndEnableSubmit);
 
   document.getElementById("formulario").addEventListener("submit", async e => {
     e.preventDefault();
@@ -170,6 +155,9 @@ window.addEventListener('DOMContentLoaded', () => {
     });
 
     const status = document.getElementById("form-status");
+    const result = await res.json();
+    console.log("📦 Respuesta Supabase:", result);
+
     if (res.ok) {
       status.textContent = "✅ Reporte enviado con éxito";
       form.reset();
@@ -179,12 +167,11 @@ window.addEventListener('DOMContentLoaded', () => {
         L.popup().setLatLng([ubicacion.latitud, ubicacion.longitud]).setContent("📍 Reporte registrado aquí").openOn(map);
       }
       ubicacion = null;
+      document.getElementById("ubicacion-info").textContent = "";
     } else {
-      status.textContent = "❌ Error al enviar reporte";
+      status.textContent = "❌ Error al enviar reporte: " + (result.message || "Ver consola");
     }
   });
-
-  // El resto del código sigue igual...
 });
 </script>
 </body>
