@@ -1,1 +1,279 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Geoportal Catastral del Centro de Quito</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body { margin: 0; height: 100%; font-family: 'Segoe UI', sans-serif; }
+    #map { width: 100%; height: 100vh; position: relative; }
+    #panel {
+      position: absolute;
+      top: 1em;
+      left: 1em;
+      background: #fff;
+      padding: 1.2em;
+      width: 340px;
+      z-index: 1000;
+      box-shadow: 0 0 8px rgba(0,0,0,0.2);
+      overflow-y: auto;
+      max-height: 95vh;
+      border-radius: 8px;
+    }
+    #logo {
+      position: absolute;
+      top: 1em;
+      right: 1em;
+      width: 120px;
+      z-index: 1001;
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 1.3em;
+      text-align: center;
+      color: #004b87;
+      margin-bottom: 1em;
+    }
+    h3 {
+      margin-top: 1.2em;
+      margin-bottom: .5em;
+      color: #004b87;
+      font-size: 1em;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 0.2em;
+    }
+    label { display: block; margin-top: .5em; font-size: 0.9em; }
+    input, select, textarea {
+      width: 100%; padding: .4em; font-size: 0.9em; margin-top: 0.2em;
+      box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;
+    }
+    button {
+      margin-top: .6em; width: 100%; padding: .6em;
+      background: #004b87; color: white; border: none;
+      border-radius: 4px; cursor: pointer; font-size: 0.95em;
+    }
+    button:hover { background: #0062a0; }
+    #form-status, #busqueda-status, #ubicacion-info {
+      margin-top: .5em; font-weight: bold; font-size: 0.9em; color: #444;
+    }
+  </style>
+</head>
+<body>
+<div id="map">
+  <img id="logo" src="9eadb191-ca8c-40af-ac1d-59e82cd78d38.png" alt="Logo Quito">
+</div>
+<div id="panel">
+  <h1>Geoportal Catastral del Centro de Quito</h1>
+
+  <h3>Capas Catastrales</h3>
+  <label><input type="checkbox" value="lotes_geojson"> Lotes</label>
+  <label><input type="checkbox" value="manzana_geojson"> Manzana</label>
+  <label><input type="checkbox" value="construcciones_geojson"> Construcciones</label>
+  <label><input type="checkbox" value="aiva_geojson"> AIVA</label>
+  <label><input type="checkbox" value="accidentes_geojson"> Accidentes</label>
+  <label><input type="checkbox" id="verReportes"> Ver reportes</label>
+
+  <h3>Formulario de Reporte</h3>
+  <form id="formulario">
+    <label>Propietario:<input name="propietario" required></label>
+    <label>Trámite:<input name="tramite" required></label>
+    <label>Tipo de problema:
+      <select name="problema" required>
+        <option value="">Seleccione una opción</option>
+        <option value="Sin linderos Consolidados">Sin linderos Consolidados</option>
+        <option value="Colinda con un Accidente Geográfico">Colinda con un Accidente Geográfico</option>
+        <option value="No existe un Ancho Vial Definido">No existe un Ancho Vial Definido</option>
+        <option value="No se Pudo Ingresar al Predio">No se Pudo Ingresar al Predio</option>
+      </select>
+    </label>
+    <label>Observaciones:<textarea name="observaciones"></textarea></label>
+    <button type="button" id="botonUbicacion">🧭 Usar mi ubicación</button>
+    <div id="ubicacion-info"></div>
+    <button type="submit" id="submitBtn" disabled>Enviar</button>
+    <div id="form-status"></div>
+  </form>
+
+  <h3>Buscador de Predio</h3>
+  <label>Clave catastral:</label>
+  <input type="text" id="claveBusqueda" placeholder="Ej: 123456">
+  <button id="botonBusqueda">Buscar lote</button>
+  <div id="busqueda-status"></div>
+</div>
+
+<script>
+window.addEventListener('DOMContentLoaded', () => {
+  const map = L.map('map').setView([-0.22985, -78.52495], 14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(map);
+
+  const url = "https://wtuhbbmapoindpuaywxo.supabase.co";
+  const key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0dWhiYm1hcG9pbmRwdWF5d3hvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3Mjc5NTEsImV4cCI6MjA2ODMwMzk1MX0.1vH0zSrQ5EHHz1p_SS3gtzyDGTBpzHBOjq5ART7Uc8k";
+  const capas = {};
+  let ubicacion = null;
+
+  function setLocationAndEnableSubmit() {
+    const output = document.getElementById("ubicacion-info");
+    if (!navigator.geolocation) {
+      output.textContent = "❌ Tu navegador no soporta geolocalización";
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(pos => {
+      ubicacion = {
+        latitud: pos.coords.latitude,
+        longitud: pos.coords.longitude
+      };
+      output.textContent = `📍 Ubicación detectada: ${ubicacion.latitud.toFixed(6)}, ${ubicacion.longitud.toFixed(6)}`;
+      document.getElementById("submitBtn").disabled = false;
+    }, err => {
+      output.textContent = "❌ No se pudo obtener la ubicación";
+    });
+  }
+
+  function toggleLayer(checkbox) {
+    const nombre = checkbox.value;
+    if (checkbox.checked) {
+      fetch(`${url}/rest/v1/${nombre}?select=*`, {
+        headers: { apikey: key, Authorization: `Bearer ${key}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          capas[nombre] = L.geoJSON({
+            type: 'FeatureCollection',
+            features: data.map(f => ({ type: 'Feature', properties: f, geometry: f.geom }))
+          }, {
+            onEachFeature: (f, layer) => {
+              let content = '';
+              for (const [k,v] of Object.entries(f.properties)) {
+                if (k !== 'geom') content += `<strong>${k}</strong>: ${v}<br>`;
+              }
+              layer.bindPopup(content);
+            }
+          }).addTo(map);
+          if (capas[nombre].getLayers().length > 0) map.fitBounds(capas[nombre].getBounds());
+        });
+    } else {
+      if (capas[nombre]) {
+        map.removeLayer(capas[nombre]);
+        delete capas[nombre];
+      }
+    }
+  }
+
+  function toggleReportes(checkbox) {
+    if (!checkbox.checked) return;
+    fetch(`${url}/rest/v1/reportes?select=*`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+      const features = data.filter(r => r.geom).map(r => ({
+        type: 'Feature', geometry: r.geom, properties: r
+      }));
+      const capa = L.geoJSON({ type: 'FeatureCollection', features }, {
+        pointToLayer: (f, latlng) => L.circleMarker(latlng, { radius: 6, color: 'red' }),
+        onEachFeature: (f, layer) => {
+          layer.bindPopup(`<strong>${f.properties.propietario}</strong><br>${f.properties.problema}<br>${f.properties.observaciones}`);
+        }
+      }).addTo(map);
+      if (capa.getLayers().length > 0) map.fitBounds(capa.getBounds());
+    });
+  }
+
+  async function buscarLote() {
+    const clave = document.getElementById("claveBusqueda").value.trim();
+    const status = document.getElementById("busqueda-status");
+    if (!clave) {
+      status.textContent = "⚠️ Ingrese una clave catastral"; return;
+    }
+    try {
+      const res = await fetch(`${url}/rest/v1/lotes_geojson?select=*&cat_lote_i=eq.${clave}`, {
+        headers: { apikey: key, Authorization: `Bearer ${key}` }
+      });
+      const datos = await res.json();
+      if (datos.length === 0) {
+        status.textContent = `❌ No existe un lote con clave = ${clave}`;
+      } else {
+        const lote = datos[0];
+        const geojson = {
+          type: "Feature",
+          properties: lote,
+          geometry: lote.geom
+        };
+        const capa = L.geoJSON(geojson, {
+          style: { color: "orange", weight: 3 },
+          onEachFeature: (f, layer) => {
+            let contenido = `<strong>Lote encontrado</strong><br>`;
+            for (const [k, v] of Object.entries(f.properties)) {
+              if (k !== 'geom') contenido += `<strong>${k}</strong>: ${v}<br>`;
+            }
+            layer.bindPopup(contenido).openPopup();
+          }
+        }).addTo(map);
+        map.fitBounds(capa.getBounds());
+        status.textContent = `✅ Lote encontrado con clave ${clave}`;
+      }
+    } catch (err) {
+      status.textContent = "❌ Error al buscar el lote";
+    }
+  }
+
+  document.querySelectorAll('#panel input[type=checkbox]').forEach(chk => {
+    if (chk.id === 'verReportes') {
+      chk.addEventListener('change', () => toggleReportes(chk));
+    } else {
+      chk.addEventListener('change', () => toggleLayer(chk));
+    }
+  });
+
+  document.getElementById("botonUbicacion").addEventListener("click", setLocationAndEnableSubmit);
+  document.getElementById("botonBusqueda").addEventListener("click", buscarLote);
+
+  document.getElementById("formulario").addEventListener("submit", async e => {
+    e.preventDefault();
+    if (!ubicacion) return alert("Debes usar tu ubicación antes de enviar");
+
+    const form = e.target;
+    const datos = {
+      propietario: form.propietario.value,
+      tramite: form.tramite.value,
+      problema: form.problema.value,
+      observaciones: form.observaciones.value,
+      latitud: ubicacion.latitud,
+      longitud: ubicacion.longitud
+    };
+    const res = await fetch(`${url}/rest/v1/reportes`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: key,
+        Authorization: `Bearer ${key}`
+      },
+      body: JSON.stringify(datos)
+    });
+
+    const status = document.getElementById("form-status");
+    const result = await res.json();
+    console.log("📦 Respuesta Supabase:", result);
+
+    if (res.ok) {
+      status.textContent = "✅ Reporte enviado con éxito";
+      form.reset();
+      document.getElementById("submitBtn").disabled = true;
+      if (ubicacion) {
+        map.setView([ubicacion.latitud, ubicacion.longitud], 17);
+        L.popup().setLatLng([ubicacion.latitud, ubicacion.longitud]).setContent("📍 Reporte registrado aquí").openOn(map);
+      }
+      ubicacion = null;
+      document.getElementById("ubicacion-info").textContent = "";
+    } else {
+      status.textContent = "❌ Error al enviar reporte: " + (result.message || "Ver consola");
+    }
+  });
+});
+</script>
+</body>
+</html>
 
